@@ -1,7 +1,7 @@
 # ruff: noqa: E501 - keep large SQL projections vertically aligned by selected column
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from datetime import UTC, date, datetime
 from typing import Any, cast
@@ -15,6 +15,7 @@ from ..domain.application_access import (
     UsageApplicationAttribution,
     application_organization,
 )
+from ..domain.enterprise import governance_directory
 from ..domain.ledger import validate_application_snapshot
 
 
@@ -23,6 +24,8 @@ def _json_value(value: object) -> object:
 
 
 class PostgreSqlApplicationRepositoryMixin:
+    org_units: Callable[[], Sequence[dict[str, Any]]]
+
     def _connection(self) -> AbstractContextManager[Any]:
         raise NotImplementedError
 
@@ -77,13 +80,15 @@ class PostgreSqlApplicationRepositoryMixin:
                                id, gateway_profile_id, slug, display_name, description,
                                owner_id, department_id, application_type, status,
                                system_managed, created_by, updated_by
-                           ) VALUES (%s, %s, %s, %s, NULL, NULL, NULL, %s, %s, %s, %s, %s)
+                           ) VALUES (%s, %s, %s, %s, NULL, %s, %s, %s, %s, %s, %s, %s)
                            RETURNING *""",
                         (
                             application_id,
                             gateway_profile_id,
                             value["slug"],
                             value["display_name"],
+                            value.get("owner_id"),
+                            value.get("department_id"),
                             application_type,
                             application_status,
                             value["system_managed"],
@@ -91,6 +96,15 @@ class PostgreSqlApplicationRepositoryMixin:
                             actor,
                         ),
                     ).fetchone()
+                    self._record_attribution(
+                        connection,
+                        application_id,
+                        owner_id=value.get("owner_id"),
+                        owner_source=value.get("owner_source"),
+                        department_id=value.get("department_id"),
+                        department_source=value.get("department_source"),
+                        actor=actor,
+                    )
                     connection.execute(
                         """INSERT INTO gateway_application_budget (
                                period_start, application_id, token_limit,
@@ -131,6 +145,19 @@ class PostgreSqlApplicationRepositoryMixin:
                     row = existing_application
                     operation = "subscription_synced"
                     before_state = {"application": existing_application}
+                if existing_application is not None:
+                    filled = self._fill_blank_attribution(
+                        connection,
+                        application_id,
+                        current=dict(row),
+                        owner_id=value.get("owner_id"),
+                        owner_source=value.get("owner_source"),
+                        department_id=value.get("department_id"),
+                        department_source=value.get("department_source"),
+                        actor=actor,
+                    )
+                    if filled is not None:
+                        row = filled
                 existing_subscription = connection.execute(
                     """SELECT * FROM gateway_application_subscription
                        WHERE gateway_profile_id = %s AND apim_subscription_id = %s
@@ -225,6 +252,146 @@ class PostgreSqlApplicationRepositoryMixin:
                     ),
                 )
         return rows
+
+    def _record_attribution(
+        self,
+        connection: Any,
+        application_id: UUID,
+        *,
+        owner_id: str | None,
+        owner_source: str | None,
+        department_id: str | None,
+        department_source: str | None,
+        actor: str,
+    ) -> None:
+        """Remember how a freshly adopted subscription came by its owner and department."""
+        if owner_source is None and department_source is None:
+            return
+        connection.execute(
+            """INSERT INTO gateway_application_attribution (
+                   application_id, owner_source, department_source, updated_by
+               ) VALUES (%s, %s, %s, %s)
+               ON CONFLICT (application_id) DO UPDATE SET
+                   owner_source = COALESCE(
+                       EXCLUDED.owner_source, gateway_application_attribution.owner_source
+                   ),
+                   department_source = COALESCE(
+                       EXCLUDED.department_source,
+                       gateway_application_attribution.department_source
+                   ),
+                   updated_by = EXCLUDED.updated_by,
+                   updated_at = now()""",
+            (application_id, owner_source, department_source, actor),
+        )
+        for field, value, source in (
+            ("owner", owner_id, owner_source),
+            ("department", department_id, department_source),
+        ):
+            if source is None:
+                continue
+            connection.execute(
+                """INSERT INTO gateway_application_attribution_audit (
+                       id, application_id, field, previous_value, new_value,
+                       previous_source, new_source, changed_by
+                   ) VALUES (gen_random_uuid(), %s, %s, NULL, %s, NULL, %s, %s)""",
+                (application_id, field, value, source, actor),
+            )
+
+    def _fill_blank_attribution(
+        self,
+        connection: Any,
+        application_id: UUID,
+        *,
+        current: Mapping[str, Any],
+        owner_id: str | None,
+        owner_source: str | None,
+        department_id: str | None,
+        department_source: str | None,
+        actor: str,
+    ) -> dict[str, Any] | None:
+        """Fill in what a sync now knows, without ever writing over what a person decided.
+
+        An install that adopted several hundred subscriptions before attribution existed has
+        that many rows with both columns NULL, and they will never pass through the adoption
+        branch again. Filling blanks here is what lets one sync attribute all of them. The
+        `manual` guard is the other half of that bargain: without it the same sync would undo
+        every correction an administrator had made, every time it ran.
+        """
+        existing = connection.execute(
+            """SELECT owner_source, department_source
+               FROM gateway_application_attribution
+               WHERE application_id = %s FOR UPDATE""",
+            (application_id,),
+        ).fetchone()
+        sources = dict(existing) if existing is not None else {}
+
+        assignments: list[tuple[str, str, str | None, str]] = []
+        if (
+            owner_id
+            and not (current.get("owner_id") or "").strip()
+            and sources.get("owner_source") != "manual"
+            and owner_source is not None
+        ):
+            assignments.append(("owner_id", "owner", owner_id, owner_source))
+        if (
+            department_id
+            and not (current.get("department_id") or "").strip()
+            and sources.get("department_source") != "manual"
+            and department_source is not None
+        ):
+            assignments.append(
+                ("department_id", "department", department_id, department_source)
+            )
+        if not assignments:
+            return None
+
+        columns = ", ".join(f"{column} = %s" for column, _, _, _ in assignments)
+        row = connection.execute(
+            f"""UPDATE gateway_application
+                SET {columns}, updated_by = %s, updated_at = now()
+                WHERE id = %s RETURNING *""",
+            (*(value for _, _, value, _ in assignments), actor, application_id),
+        ).fetchone()
+        connection.execute(
+            """INSERT INTO gateway_application_attribution (
+                   application_id, owner_source, department_source, updated_by
+               ) VALUES (%s, %s, %s, %s)
+               ON CONFLICT (application_id) DO UPDATE SET
+                   owner_source = COALESCE(
+                       EXCLUDED.owner_source, gateway_application_attribution.owner_source
+                   ),
+                   department_source = COALESCE(
+                       EXCLUDED.department_source,
+                       gateway_application_attribution.department_source
+                   ),
+                   updated_by = EXCLUDED.updated_by,
+                   updated_at = now()""",
+            (
+                application_id,
+                next((source for _, field, _, source in assignments if field == "owner"), None),
+                next(
+                    (source for _, field, _, source in assignments if field == "department"),
+                    None,
+                ),
+                actor,
+            ),
+        )
+        for _, field, value, source in assignments:
+            connection.execute(
+                """INSERT INTO gateway_application_attribution_audit (
+                       id, application_id, field, previous_value, new_value,
+                       previous_source, new_source, changed_by
+                   ) VALUES (gen_random_uuid(), %s, %s, NULL, %s, %s, %s, %s)""",
+                (
+                    application_id,
+                    field,
+                    value,
+                    sources.get(f"{field}_source"),
+                    source,
+                    actor,
+                ),
+            )
+        return dict(row)
 
     def provision_gateway_application(
         self,
@@ -422,6 +589,9 @@ class PostgreSqlApplicationRepositoryMixin:
                 owner_id = previous_owner if previous == organization_id and previous_department == department_id else None
             application_organization(
                 {"organization_id": organization_id} if organization_id else {}, department_id,
+                catalog=governance_directory(
+                    (), include_seeded_people=False, units=self.org_units(),
+                ),
             )
             if previous != organization_id or previous_department != department_id or previous_owner != owner_id:
                 if organization_id is None:
@@ -437,6 +607,15 @@ class PostgreSqlApplicationRepositoryMixin:
                     "UPDATE gateway_application SET department_id = %s, owner_id = %s, updated_by = %s, updated_at = now() WHERE id = %s",
                     (department_id, owner_id, actor, application_id),
                 )
+                for field, before, after in (
+                    ("department", previous_department, department_id),
+                    ("owner", previous_owner, owner_id),
+                ):
+                    if before != after:
+                        self._mark_attribution_manual(
+                            connection, application_id, field,
+                            previous=before, new=after, actor=actor,
+                        )
                 connection.execute(
                     """INSERT INTO gateway_application_audit
                        (application_id, operation, before_state, after_state, actor)
@@ -697,6 +876,147 @@ class PostgreSqlApplicationRepositoryMixin:
                 ),
             )
         return after_state
+
+    def update_gateway_application_department(
+        self,
+        application_id: UUID,
+        department_id: str | None,
+        actor: str,
+    ) -> dict[str, Any] | None:
+        with self._connection() as connection, connection.transaction():
+            existing = connection.execute(
+                "SELECT * FROM gateway_application WHERE id = %s FOR UPDATE",
+                (application_id,),
+            ).fetchone()
+            if existing is None:
+                return None
+            before = dict(existing)
+            if before["department_id"] == department_id:
+                # Re-confirming the same owner is not a change. Writing one anyway would
+                # bump updated_by and file an audit row saying nothing happened, which
+                # makes the trail harder to read at exactly the moment it is consulted.
+                return before
+            row = connection.execute(
+                """UPDATE gateway_application
+                   SET department_id = %s,
+                       updated_by = %s, updated_at = now()
+                   WHERE id = %s
+                   RETURNING *""",
+                (department_id, actor, application_id),
+            ).fetchone()
+            connection.execute(
+                """INSERT INTO gateway_application_audit (
+                       application_id, operation, before_state, after_state, actor
+                   ) VALUES (%s, 'updated', %s, %s, %s)""",
+                (
+                    application_id,
+                    Jsonb(_json_value({"department_id": before["department_id"]})),
+                    Jsonb(_json_value({"department_id": department_id})),
+                    actor,
+                ),
+            )
+            self._mark_attribution_manual(
+                connection, application_id, "department",
+                previous=before["department_id"], new=department_id, actor=actor,
+            )
+        return cast(dict[str, Any], row)
+
+    def update_gateway_application_owner(
+        self,
+        application_id: UUID,
+        owner_id: str | None,
+        actor: str,
+    ) -> dict[str, Any] | None:
+        """Name the person a subscription belongs to, by hand.
+
+        This is the escape hatch for what derivation cannot reach. On the install this was built
+        for, 167 of 275 subscriptions carry neither an APIM owner nor an email anywhere in their
+        name -- `dongyuli-IT` is a real person whose address is simply not in the data. Inventing
+        one would be worse than leaving it blank, so the blank is offered to a human instead.
+        """
+        with self._connection() as connection, connection.transaction():
+            existing = connection.execute(
+                "SELECT * FROM gateway_application WHERE id = %s FOR UPDATE",
+                (application_id,),
+            ).fetchone()
+            if existing is None:
+                return None
+            before = dict(existing)
+            if (before["owner_id"] or None) == (owner_id or None):
+                return before
+            row = connection.execute(
+                """UPDATE gateway_application
+                   SET owner_id = %s, updated_by = %s, updated_at = now()
+                   WHERE id = %s RETURNING *""",
+                (owner_id, actor, application_id),
+            ).fetchone()
+            connection.execute(
+                """INSERT INTO gateway_application_audit (
+                       application_id, operation, before_state, after_state, actor
+                   ) VALUES (%s, 'updated', %s, %s, %s)""",
+                (
+                    application_id,
+                    Jsonb(_json_value({"owner_id": before["owner_id"]})),
+                    Jsonb(_json_value({"owner_id": owner_id})),
+                    actor,
+                ),
+            )
+            self._mark_attribution_manual(
+                connection, application_id, "owner",
+                previous=before["owner_id"], new=owner_id, actor=actor,
+            )
+        return cast(dict[str, Any], row)
+
+    def _mark_attribution_manual(
+        self,
+        connection: Any,
+        application_id: UUID,
+        field: str,
+        *,
+        previous: str | None,
+        new: str | None,
+        actor: str,
+    ) -> None:
+        """Stamp a field as decided by a person, which is what stops the next sync touching it."""
+        column = f"{field}_source"
+        existing = connection.execute(
+            f"""SELECT {column} AS source FROM gateway_application_attribution
+                WHERE application_id = %s""",
+            (application_id,),
+        ).fetchone()
+        connection.execute(
+            f"""INSERT INTO gateway_application_attribution (
+                    application_id, {column}, updated_by
+                ) VALUES (%s, 'manual', %s)
+                ON CONFLICT (application_id) DO UPDATE SET
+                    {column} = 'manual',
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = now()""",
+            (application_id, actor),
+        )
+        connection.execute(
+            """INSERT INTO gateway_application_attribution_audit (
+                   id, application_id, field, previous_value, new_value,
+                   previous_source, new_source, changed_by
+               ) VALUES (gen_random_uuid(), %s, %s, %s, %s, %s, 'manual', %s)""",
+            (
+                application_id,
+                field,
+                previous,
+                new,
+                (dict(existing).get("source") if existing is not None else None),
+                actor,
+            ),
+        )
+
+    def list_gateway_application_attribution(self) -> Sequence[dict[str, Any]]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT application_id, owner_source, department_source,
+                          updated_by, updated_at
+                   FROM gateway_application_attribution"""
+            ).fetchall()
+        return cast(Sequence[dict[str, Any]], rows)
 
     def list_gateway_application_subscriptions(
         self, application_ids: Sequence[UUID]
@@ -1096,6 +1416,8 @@ class PostgreSqlApplicationRepositoryMixin:
                           application.display_name AS application_name,
                           application.application_type,
                           application.status AS application_status,
+                          application.department_id,
+                          application.owner_id,
                           subscription.id AS application_subscription_id,
                           subscription.apim_subscription_id,
                           subscription.state AS subscription_state,

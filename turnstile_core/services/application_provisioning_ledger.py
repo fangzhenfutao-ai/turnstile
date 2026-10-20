@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from ..domain.application_access import MAX_TOKENS_PER_MINUTE, application_organization
-from ..domain.enterprise import enterprise_catalog
+from ..domain.enterprise import governance_directory
 from ..integrations.apim_control_plane_contract import (
     PolicyCompilationError,
     RetryablePublicationError,
@@ -107,8 +107,11 @@ def prepare_application_ledger(
     if len(model_identifiers) > MODEL_PROPERTY_LIMIT:
         raise PolicyCompilationError("Application model access exceeds the ledger property limit")
     access = {"Configured": policy is not None, "Models": model_identifiers}
-    organization = application_organization(dict(mapping.get("tags") or {}))
-    department = next((item for item in enterprise_catalog().departments
+    catalog = governance_directory(
+        (), include_seeded_people=False, units=repository.org_units(),
+    )
+    organization = application_organization(dict(mapping.get("tags") or {}), catalog=catalog)
+    department = next((item for item in catalog.departments
                        if item.id == mapping.get("department_id")), None)
     identity = {
         "ApplicationId": str(application_id),

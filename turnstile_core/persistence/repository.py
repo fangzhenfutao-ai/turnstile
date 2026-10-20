@@ -33,6 +33,7 @@ from .repository_budgets import PostgreSqlBudgetRepositoryMixin
 from .repository_contract import OpsDbProxy, QueryRepository
 from .repository_gateway_targets import PostgreSqlGatewayTargetRepositoryMixin
 from .repository_model_availability import PostgreSqlModelAvailabilityRepositoryMixin
+from .repository_organization import PostgreSqlOrganizationRepositoryMixin
 from .repository_publications import PostgreSqlPublicationRepositoryMixin
 from .repository_registry import PostgreSqlRegistryRepositoryMixin
 from .repository_support import (
@@ -77,6 +78,7 @@ class PostgreSqlOpsDbProxy(
     PostgreSqlGatewayTargetRepositoryMixin,
     PostgreSqlRegistryRepositoryMixin,
     PostgreSqlPublicationRepositoryMixin,
+    PostgreSqlOrganizationRepositoryMixin,
     QueryRepository,
 ):
     def begin_platform_invocation(self, attempt: PlatformInvocationAttempt) -> None:

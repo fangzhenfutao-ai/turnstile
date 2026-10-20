@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -20,6 +20,10 @@ from .repository_support import BudgetConstraintViolation, proportional_budget_t
 
 
 class InMemoryBudgetRepositoryMixin(InMemoryBudgetEvidenceRepositoryMixin):
+    # Supplied by the application and organization mixins; declared here because the
+    # subscription rollup needs the department a key is filed under and that department's parent.
+    gateway_applications: list[dict[str, Any]]
+    org_units: Callable[[], Sequence[dict[str, Any]]]
     budget_roll_forward: dict[date, dict[str, Any]]
     department_enforcement: dict[str, dict[str, Any]]
     department_enforcement_audit: list[dict[str, Any]]
@@ -41,9 +45,51 @@ class InMemoryBudgetRepositoryMixin(InMemoryBudgetEvidenceRepositoryMixin):
             if row_period == period_start
         ]
 
-    def token_usage_by_budget_scope(
+    def subscription_attributed_usage(
         self, from_: datetime, to: datetime
     ) -> list[dict[str, Any]]:
+        """Mirrors the SQL: usage that declared nothing, attributed to its subscription."""
+        applications = {item["id"]: item for item in self.gateway_applications}
+        units = {str(row["id"]): row for row in self.org_units()}
+        totals: dict[tuple[str, str], int] = {}
+        usd_totals: dict[tuple[str, str], Decimal] = {}
+        unpriced: dict[tuple[str, str], int] = {}
+        for record in self.usage_records:
+            if record.usage_domain != "apim" or not from_ <= record.ts < to:
+                continue
+            attribution = self.usage_application_attributions.get(record.id)
+            if attribution is None:
+                continue
+            application = applications.get(attribution.application_id)
+            if application is None or application.get("system_managed"):
+                continue
+            tokens = record.input_tokens + record.cached_tokens + record.output_tokens
+            department_id = application.get("department_id")
+            owner_id = application.get("owner_id")
+            scopes: list[tuple[str, str]] = []
+            if department_id and record.department_id == "unattributed":
+                scopes.append(("department", str(department_id)))
+                organization_id = (units.get(department_id) or {}).get("parent_id")
+                if organization_id and record.organization_id == "unattributed":
+                    scopes.append(("organization", str(organization_id)))
+            if owner_id and record.user_id == "unattributed":
+                scopes.append(("user", str(owner_id)))
+            for key in scopes:
+                totals[key] = totals.get(key, 0) + tokens
+                if record.usd_cost is None:
+                    unpriced[key] = unpriced.get(key, 0) + 1
+                else:
+                    usd_totals[key] = usd_totals.get(key, Decimal(0)) + record.usd_cost
+        return [
+            {
+                "scope_type": scope_type, "scope_id": scope_id, "used_tokens": used_tokens,
+                "used_usd": usd_totals.get((scope_type, scope_id), Decimal(0)),
+                "unpriced_usage_count": unpriced.get((scope_type, scope_id), 0),
+            }
+            for (scope_type, scope_id), used_tokens in totals.items()
+        ]
+
+    def token_usage_by_budget_scope(self, from_: datetime, to: datetime) -> list[dict[str, Any]]:
         totals: dict[tuple[str, str], int] = {}
         usd_totals: dict[tuple[str, str], Decimal] = {}
         unpriced_usd: dict[tuple[str, str], int] = {}

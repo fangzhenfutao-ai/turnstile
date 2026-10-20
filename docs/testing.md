@@ -110,7 +110,42 @@ Validate cross-target foreign keys, the unique enabled default route, preserved 
 and transactional inventory replacement against a separately authorized PostgreSQL environment.
 Local domain and SQL-source tests are not evidence that a migration has been applied.
 
-For a clean installation, run `uv run python -m backend.migrate` against an authorized new PostgreSQL 16+ database. Verify one `schema_migration` row per numbered migration (currently `001_initial_schema`, `002_apim_request_attempt_identity`, `003_budget_reservation_finalization`, `004_apim_usage_identity_guard`, `005_billable_request_lifecycle`, `006_versioned_budget_evidence`, `007_model_price_source`, `008_price_review_and_guard`, `009_context_tier_pricing`, `010_budget_execution_protocol`, `011_gateway_targets`, `012_apim_onboarding`, `013_multi_target_rollout`, `014_self_hosted_gateway_provisioning`, `015_platform_invocation_trace`, and `016_model_availability`), then run the command again and verify that no migration is reapplied.
+For a clean installation, run `uv run python -m backend.migrate` against an authorized new
+PostgreSQL 16+ database. Verify one `schema_migration` row per up-migration file (30 in this
+integrated source), then run the command again and verify that no migration is reapplied.
+
+### Delivery-branch integration
+
+This source integrates upstream `f6924a3` with delivery `b37a972`. Migration identity is the
+complete filename without `.up.sql`, not its numeric prefix. Preserve the exact bytes and names
+of both `009_context_tier_pricing` and `009_org_units`, and both
+`010_application_attribution` and `010_budget_execution_protocol`. Do not renumber an applied
+migration or replace its recorded checksum. The shared 001-008 files are identical in both
+branches. An existing delivery database applies the missing upstream migrations; an existing
+upstream database applies the missing organization and attribution migrations.
+
+The shared history that must retain its existing checksums is:
+
+- `001_initial_schema`
+- `002_apim_request_attempt_identity`
+- `003_budget_reservation_finalization`
+- `004_apim_usage_identity_guard`
+- `005_billable_request_lifecycle`
+- `006_versioned_budget_evidence`
+- `007_model_price_source`
+- `008_price_review_and_guard`
+
+Validate clean installation, upgrade from each branch, unchanged existing checksums and a
+second no-op run on separate disposable PostgreSQL databases. Never point an initializing
+test at a shared or production database. Database backup/restore and an approved maintenance
+window are required before a real upgrade; a package rollback is not a database rollback.
+
+Subscription-attributed budget reporting also carries exact USD and unpriced-request counts.
+Missing prices remain unavailable, not zero. Original request identities remain unchanged,
+and declared organization/department/person usage must not be attributed a second time.
+Organization and account management remain available alongside upstream budget and Gateway
+features. These read-time totals do not enable person-level admission for subscription-only
+callers; atomic budget execution still requires its independent installation and rollout.
 
 The initial schema contains no users, credentials, provider connections, runtimes, business models, usage events, or customer data.
 

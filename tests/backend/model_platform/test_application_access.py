@@ -304,6 +304,7 @@ def test_application_organization_sql_preserves_other_tags_and_records_before_af
     context = MagicMock()
     context.__enter__.return_value = connection
     repository = PostgreSqlApplicationRepositoryMixin()
+    repository.org_units = InMemoryRepository().org_units
     with patch.object(repository, "_connection", return_value=context):
         result = repository.update_gateway_application_organization(
             application_id,
@@ -400,10 +401,14 @@ def test_application_department_sql_writes_column_and_audit_in_one_transaction(
         MagicMock(),
         MagicMock(),
         MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
     ]
     context = MagicMock()
     context.__enter__.return_value = connection
     repository = PostgreSqlApplicationRepositoryMixin()
+    repository.org_units = InMemoryRepository().org_units
     with patch.object(repository, "_connection", return_value=context):
         result = repository.update_gateway_application_organization(
             application_id,
@@ -424,8 +429,12 @@ def test_application_department_sql_writes_column_and_audit_in_one_transaction(
     column_statement, column_values = connection.execute.call_args_list[3].args
     assert "SET department_id = %s" in column_statement
     assert column_values == ("department-platform", None, "owner", application_id)
-    before = connection.execute.call_args_list[4].args[1][1].obj
-    after = connection.execute.call_args_list[4].args[1][2].obj
+    source_statement = connection.execute.call_args_list[5].args[0]
+    assert "department_source" in source_statement and "'manual'" in source_statement
+    attribution_audit = connection.execute.call_args_list[6].args[1]
+    assert attribution_audit[:4] == (application_id, "department", None, "department-platform")
+    before = connection.execute.call_args_list[7].args[1][1].obj
+    after = connection.execute.call_args_list[7].args[1][2].obj
     assert before == {
         "organization_id": "org-contoso-global",
         "department_id": None,
@@ -455,10 +464,14 @@ def test_application_person_sql_updates_management_owner_and_audits_no_consumpti
         MagicMock(),
         MagicMock(),
         MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
     ]
     context = MagicMock()
     context.__enter__.return_value = connection
     repository = PostgreSqlApplicationRepositoryMixin()
+    repository.org_units = InMemoryRepository().org_units
     with patch.object(repository, "_connection", return_value=context):
         result = repository.update_gateway_application_organization(
             application_id,
@@ -474,7 +487,13 @@ def test_application_person_sql_updates_management_owner_and_audits_no_consumpti
     statement, values = connection.execute.call_args_list[3].args
     assert "owner_id = %s" in statement
     assert values == ("department-platform", "test.user01@contoso.com", "owner", application_id)
-    audit = connection.execute.call_args_list[4].args[1]
+    source_statement = connection.execute.call_args_list[5].args[0]
+    assert "owner_source" in source_statement and "'manual'" in source_statement
+    attribution_audit = connection.execute.call_args_list[6].args[1]
+    assert attribution_audit[:4] == (
+        application_id, "owner", None, "test.user01@contoso.com",
+    )
+    audit = connection.execute.call_args_list[7].args[1]
     assert audit[1].obj["owner_id"] is None
     assert audit[2].obj["owner_id"] == "test.user01@contoso.com"
     assert all(

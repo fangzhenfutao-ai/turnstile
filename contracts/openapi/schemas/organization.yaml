@@ -1,0 +1,230 @@
+schemas:
+  ConsoleMember:
+    properties:
+      email:
+        type: string
+        title: Email
+      display_name:
+        anyOf:
+        - type: string
+        - type: 'null'
+        title: Display Name
+      role:
+        type: string
+        enum:
+        - owner
+        - member
+        title: Role
+      enabled:
+        type: boolean
+        title: Enabled
+      sign_in:
+        type: string
+        enum:
+        - password
+        - microsoft
+        title: Sign In
+      created_at:
+        type: string
+        format: date-time
+        title: Created At
+      last_login_at:
+        anyOf:
+        - type: string
+          format: date-time
+        - type: 'null'
+        title: Last Login At
+      is_self:
+        type: boolean
+        title: Is Self
+    additionalProperties: false
+    type: object
+    required:
+    - email
+    - display_name
+    - role
+    - enabled
+    - sign_in
+    - created_at
+    - last_login_at
+    - is_self
+    title: ConsoleMember
+    description: 'Someone who can sign in to the console.
+
+
+      Distinct from the people in the governance directory, who are there because they called
+
+      the gateway or own an application. A colleague who signs in with Microsoft and looks at a
+
+      report is in neither of those sets, so before this list existed they were stored in
+
+      `app_user`, granted the member role, and shown on no screen anywhere -- including the one
+
+      that would have explained why every edit control was missing for them.'
+  ConsoleMemberList:
+    properties:
+      members:
+        items:
+          $ref: ../../openapi.yaml#/components/schemas/ConsoleMember
+        type: array
+        title: Members
+      owner_count:
+        type: integer
+        minimum: 0.0
+        title: Owner Count
+    additionalProperties: false
+    type: object
+    required:
+    - members
+    - owner_count
+    title: ConsoleMemberList
+  ConsoleMemberRoleUpdate:
+    properties:
+      role:
+        type: string
+        enum:
+        - owner
+        - member
+        title: Role
+    additionalProperties: false
+    type: object
+    required:
+    - role
+    title: ConsoleMemberRoleUpdate
+  ConsoleMemberStatusUpdate:
+    properties:
+      enabled:
+        type: boolean
+        title: Enabled
+    additionalProperties: false
+    type: object
+    required:
+    - enabled
+    title: ConsoleMemberStatusUpdate
+  OrgUnit:
+    properties:
+      id:
+        type: string
+        title: Id
+      unit_type:
+        type: string
+        enum:
+        - organization
+        - department
+        title: Unit Type
+      parent_id:
+        anyOf:
+        - type: string
+        - type: 'null'
+        title: Parent Id
+      display_name:
+        type: string
+        title: Display Name
+      status:
+        type: string
+        enum:
+        - active
+        - retired
+        title: Status
+      references:
+        $ref: ../../openapi.yaml#/components/schemas/OrgUnitReferences
+      updated_by:
+        type: string
+        title: Updated By
+      updated_at:
+        type: string
+        format: date-time
+        title: Updated At
+    additionalProperties: false
+    type: object
+    required:
+    - id
+    - unit_type
+    - parent_id
+    - display_name
+    - status
+    - references
+    - updated_by
+    - updated_at
+    title: OrgUnit
+  OrgUnitCreate:
+    properties:
+      display_name:
+        type: string
+        maxLength: 120
+        minLength: 1
+        title: Display Name
+      id:
+        type: string
+        pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+        title: Id
+    additionalProperties: false
+    type: object
+    required:
+    - display_name
+    - id
+    title: OrgUnitCreate
+  OrgUnitReferences:
+    properties:
+      budgets:
+        type: integer
+        minimum: 0.0
+        title: Budgets
+      usage_records:
+        type: integer
+        minimum: 0.0
+        title: Usage Records
+      applications:
+        type: integer
+        minimum: 0.0
+        title: Applications
+    additionalProperties: false
+    type: object
+    required:
+    - budgets
+    - usage_records
+    - applications
+    title: OrgUnitReferences
+    description: What keeps naming this unit once it stops being offered.
+  OrgUnitRename:
+    properties:
+      display_name:
+        type: string
+        maxLength: 120
+        minLength: 1
+        title: Display Name
+    additionalProperties: false
+    type: object
+    required:
+    - display_name
+    title: OrgUnitRename
+  OrgUnitStatusUpdate:
+    properties:
+      status:
+        type: string
+        enum:
+        - active
+        - retired
+        title: Status
+    additionalProperties: false
+    type: object
+    required:
+    - status
+    title: OrgUnitStatusUpdate
+  OrganizationDirectory:
+    properties:
+      organization:
+        anyOf:
+        - $ref: ../../openapi.yaml#/components/schemas/OrgUnit
+        - type: 'null'
+      departments:
+        items:
+          $ref: ../../openapi.yaml#/components/schemas/OrgUnit
+        type: array
+        title: Departments
+    additionalProperties: false
+    type: object
+    required:
+    - organization
+    - departments
+    title: OrganizationDirectory

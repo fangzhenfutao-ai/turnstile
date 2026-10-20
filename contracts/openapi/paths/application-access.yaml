@@ -541,3 +541,106 @@ paths:
         succeeds or fails. This operation does not call listSecrets.
 
         '
+  /api/v1/application-access/applications/{application_id}/department:
+    put:
+      tags:
+      - Application Access
+      summary: Update Gateway Application Department
+      operationId: update_gateway_application_department_api_v1_application_access_applications__application_id__department_put
+      parameters:
+      - name: application_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Application Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../../openapi.yaml#/components/schemas/GatewayApplicationDepartmentUpdate
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/GatewayApplicationDetail
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/HTTPValidationError
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []
+  /api/v1/application-access/applications/{application_id}/owner:
+    put:
+      tags:
+      - Application Access
+      summary: Update Gateway Application Owner
+      operationId: update_gateway_application_owner_api_v1_application_access_applications__application_id__owner_put
+      parameters:
+      - name: application_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Application Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../../openapi.yaml#/components/schemas/GatewayApplicationOwnerUpdate
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/GatewayApplicationDetail
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/HTTPValidationError
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []
+  /api/v1/application-access/applications/bulk-department:
+    put:
+      tags:
+      - Application Access
+      summary: Update Gateway Application Department Bulk
+      operationId: update_gateway_application_department_bulk_api_v1_application_access_applications_bulk_department_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: ../../openapi.yaml#/components/schemas/GatewayApplicationBulkDepartment
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/GatewayApplicationBulkDepartmentResult
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/HTTPValidationError
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []

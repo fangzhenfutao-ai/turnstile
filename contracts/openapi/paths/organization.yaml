@@ -1,0 +1,232 @@
+paths:
+  /api/v1/organization/directory:
+    get:
+      tags:
+      - Organization
+      summary: Get Organization Directory
+      operationId: get_organization_directory_api_v1_organization_directory_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/OrganizationDirectory
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '401':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []
+  /api/v1/organization/departments:
+    post:
+      tags:
+      - Organization
+      summary: Create Department
+      operationId: create_department_api_v1_organization_departments_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: ../../openapi.yaml#/components/schemas/OrgUnitCreate
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/OrganizationDirectory
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/HTTPValidationError
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '401':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '403':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []
+  /api/v1/organization/units/{unit_id}/name:
+    put:
+      tags:
+      - Organization
+      summary: Rename Unit
+      operationId: rename_unit_api_v1_organization_units__unit_id__name_put
+      parameters:
+      - name: unit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Unit Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../../openapi.yaml#/components/schemas/OrgUnitRename
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/OrganizationDirectory
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/HTTPValidationError
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '401':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '403':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []
+  /api/v1/organization/units/{unit_id}/status:
+    put:
+      tags:
+      - Organization
+      summary: Set Unit Status
+      operationId: set_unit_status_api_v1_organization_units__unit_id__status_put
+      parameters:
+      - name: unit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Unit Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../../openapi.yaml#/components/schemas/OrgUnitStatusUpdate
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/OrganizationDirectory
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/HTTPValidationError
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '401':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '403':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []
+  /api/v1/organization/members:
+    get:
+      tags:
+      - Organization
+      summary: List Console Members
+      operationId: list_console_members_api_v1_organization_members_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/ConsoleMemberList
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '401':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []
+  /api/v1/organization/members/{email}/role:
+    put:
+      tags:
+      - Organization
+      summary: Set Console Member Role
+      operationId: set_console_member_role_api_v1_organization_members__email__role_put
+      parameters:
+      - name: email
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../../openapi.yaml#/components/schemas/ConsoleMemberRoleUpdate
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/ConsoleMemberList
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/HTTPValidationError
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '401':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '403':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []
+  /api/v1/organization/members/{email}/status:
+    put:
+      tags:
+      - Organization
+      summary: Set Console Member Status
+      operationId: set_console_member_status_api_v1_organization_members__email__status_put
+      parameters:
+      - name: email
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../../openapi.yaml#/components/schemas/ConsoleMemberStatusUpdate
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/ConsoleMemberList
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: ../../openapi.yaml#/components/schemas/HTTPValidationError
+        default:
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '401':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+        '403':
+          $ref: ../../openapi.yaml#/components/responses/ErrorResponse
+      security:
+      - sessionCookie: []

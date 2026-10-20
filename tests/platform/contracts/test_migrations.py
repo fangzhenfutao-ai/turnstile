@@ -34,6 +34,8 @@ def test_migration_chain_preserves_clean_install_and_adds_attempt_identity() -> 
         "007_model_price_source.up.sql",
         "008_price_review_and_guard.up.sql",
         "009_context_tier_pricing.up.sql",
+        "009_org_units.up.sql",
+        "010_application_attribution.up.sql",
         "010_budget_execution_protocol.up.sql",
         "011_gateway_targets.up.sql",
         "012_apim_onboarding.up.sql",

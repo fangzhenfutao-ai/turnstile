@@ -48,6 +48,8 @@ tags:
   description: Authenticated, assigned and budget-governed internal model invocation.
 - name: Model Router
   description: User-scoped model routing drafts, validation, version publication, and lifecycle.
+- name: Organization
+  description: Organization directory and console member administration.
 paths:
   /api/v1/assistant/ask:
     $ref: ./openapi/paths/assistant.yaml#/paths/~1api~1v1~1assistant~1ask
@@ -333,6 +335,26 @@ paths:
     $ref: ./openapi/paths/model-platform.yaml#/paths/~1api~1v1~1model-management~1publications~1{publication_id}~1archive
   /api/v1/model-management/self-hosted-gateways/{deployment_id}/node-enrollments:
     $ref: ./openapi/paths/model-platform.yaml#/paths/~1api~1v1~1model-management~1self-hosted-gateways~1{deployment_id}~1node-enrollments
+  /api/v1/application-access/applications/{application_id}/department:
+    $ref: ./openapi/paths/application-access.yaml#/paths/~1api~1v1~1application-access~1applications~1{application_id}~1department
+  /api/v1/application-access/applications/{application_id}/owner:
+    $ref: ./openapi/paths/application-access.yaml#/paths/~1api~1v1~1application-access~1applications~1{application_id}~1owner
+  /api/v1/application-access/applications/bulk-department:
+    $ref: ./openapi/paths/application-access.yaml#/paths/~1api~1v1~1application-access~1applications~1bulk-department
+  /api/v1/organization/directory:
+    $ref: ./openapi/paths/organization.yaml#/paths/~1api~1v1~1organization~1directory
+  /api/v1/organization/departments:
+    $ref: ./openapi/paths/organization.yaml#/paths/~1api~1v1~1organization~1departments
+  /api/v1/organization/units/{unit_id}/name:
+    $ref: ./openapi/paths/organization.yaml#/paths/~1api~1v1~1organization~1units~1{unit_id}~1name
+  /api/v1/organization/units/{unit_id}/status:
+    $ref: ./openapi/paths/organization.yaml#/paths/~1api~1v1~1organization~1units~1{unit_id}~1status
+  /api/v1/organization/members:
+    $ref: ./openapi/paths/organization.yaml#/paths/~1api~1v1~1organization~1members
+  /api/v1/organization/members/{email}/role:
+    $ref: ./openapi/paths/organization.yaml#/paths/~1api~1v1~1organization~1members~1{email}~1role
+  /api/v1/organization/members/{email}/status:
+    $ref: ./openapi/paths/organization.yaml#/paths/~1api~1v1~1organization~1members~1{email}~1status
 components:
   securitySchemes:
     sessionCookie:
@@ -1128,6 +1150,34 @@ components:
       $ref: ./openapi/schemas/model-platform.yaml#/schemas/RouteSnapshot-Input
     RouteSnapshot-Output:
       $ref: ./openapi/schemas/model-platform.yaml#/schemas/RouteSnapshot-Output
+    ConsoleMember:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/ConsoleMember
+    ConsoleMemberList:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/ConsoleMemberList
+    ConsoleMemberRoleUpdate:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/ConsoleMemberRoleUpdate
+    ConsoleMemberStatusUpdate:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/ConsoleMemberStatusUpdate
+    OrgUnit:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/OrgUnit
+    OrgUnitCreate:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/OrgUnitCreate
+    OrgUnitReferences:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/OrgUnitReferences
+    OrgUnitRename:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/OrgUnitRename
+    OrgUnitStatusUpdate:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/OrgUnitStatusUpdate
+    OrganizationDirectory:
+      $ref: ./openapi/schemas/organization.yaml#/schemas/OrganizationDirectory
+    GatewayApplicationBulkDepartment:
+      $ref: ./openapi/schemas/application-access.yaml#/schemas/GatewayApplicationBulkDepartment
+    GatewayApplicationBulkDepartmentResult:
+      $ref: ./openapi/schemas/application-access.yaml#/schemas/GatewayApplicationBulkDepartmentResult
+    GatewayApplicationDepartmentUpdate:
+      $ref: ./openapi/schemas/application-access.yaml#/schemas/GatewayApplicationDepartmentUpdate
+    GatewayApplicationOwnerUpdate:
+      $ref: ./openapi/schemas/application-access.yaml#/schemas/GatewayApplicationOwnerUpdate
 x-event-contracts:
   usage-event:
     transport: Azure Event Hubs

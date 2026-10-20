@@ -592,6 +592,33 @@ schemas:
       updated_at:
         type: string
         format: date-time
+      owner_source:
+        anyOf:
+        - type: string
+          enum:
+          - apim
+          - derived
+          - manual
+        - type: 'null'
+        title: Owner Source
+      department_source:
+        anyOf:
+        - type: string
+          enum:
+          - apim
+          - derived
+          - manual
+        - type: 'null'
+        title: Department Source
+      person_group:
+        anyOf:
+        - type: string
+        - type: 'null'
+        title: Person Group
+      person_group_size:
+        type: integer
+        title: Person Group Size
+        default: 1
     additionalProperties: false
     type: object
     required:
@@ -784,6 +811,33 @@ schemas:
         - type: string
         - type: 'null'
         title: Key Management Unavailable Reason
+      owner_source:
+        anyOf:
+        - type: string
+          enum:
+          - apim
+          - derived
+          - manual
+        - type: 'null'
+        title: Owner Source
+      department_source:
+        anyOf:
+        - type: string
+          enum:
+          - apim
+          - derived
+          - manual
+        - type: 'null'
+        title: Department Source
+      person_group:
+        anyOf:
+        - type: string
+        - type: 'null'
+        title: Person Group
+      person_group_size:
+        type: integer
+        title: Person Group Size
+        default: 1
     additionalProperties: false
     type: object
     required:
@@ -998,3 +1052,94 @@ schemas:
           minLength: 1
           maxLength: 256
           x-secret: true
+  GatewayApplicationBulkDepartment:
+    properties:
+      application_ids:
+        items:
+          type: string
+          format: uuid
+        type: array
+        maxItems: 500
+        minItems: 1
+        title: Application Ids
+      department_id:
+        anyOf:
+        - type: string
+          maxLength: 255
+        - type: 'null'
+        title: Department Id
+    additionalProperties: false
+    type: object
+    required:
+    - application_ids
+    title: GatewayApplicationBulkDepartment
+    description: 'File a batch of subscriptions in one action.
+
+
+      An install that names a subscription per person arrives with several hundred of them, all
+
+      unfiled. Doing that one dialog at a time is not a slow version of this feature -- it is
+
+      the reason nobody does it, and an unfiled inventory is the state this whole area exists
+
+      to get out of.'
+  GatewayApplicationBulkDepartmentResult:
+    properties:
+      updated:
+        type: integer
+        minimum: 0.0
+        title: Updated
+      unchanged:
+        type: integer
+        minimum: 0.0
+        title: Unchanged
+    additionalProperties: false
+    type: object
+    required:
+    - updated
+    - unchanged
+    title: GatewayApplicationBulkDepartmentResult
+  GatewayApplicationDepartmentUpdate:
+    properties:
+      department_id:
+        anyOf:
+        - type: string
+          maxLength: 255
+        - type: 'null'
+        title: Department Id
+    additionalProperties: false
+    type: object
+    title: GatewayApplicationDepartmentUpdate
+    description: 'Which department a subscription is filed under, and therefore which budget it spends.
+
+
+      The gateway reads this off the subscription on every request that does not declare a
+
+      department of its own, so filing a subscription here is what makes its traffic count
+
+      against that department. Moving one moves future usage; usage already recorded keeps the
+
+      department it was recorded with, because a budget that silently restates last month is
+
+      not a budget anyone can reconcile.'
+  GatewayApplicationOwnerUpdate:
+    properties:
+      owner_id:
+        anyOf:
+        - type: string
+          maxLength: 255
+        - type: 'null'
+        title: Owner Id
+    additionalProperties: false
+    type: object
+    title: GatewayApplicationOwnerUpdate
+    description: 'Name the person who holds a subscription, when derivation could not.
+
+
+      Required to look like an address, because the budget directory admits a person only when
+
+      their id contains an `@` -- that rule is what keeps machine identities such as the runtime
+
+      health probe out of the person list. An owner written here that is not an address would be
+
+      accepted and then silently fail to be budgetable, which is a worse outcome than refusing it.'

@@ -28,6 +28,30 @@ The frontend uses the Microsoft `organizations` authority. Tenant admission is e
 
 Delegated invocation does not change the authenticated session. A Member remains the recorded actor, while the configured tester becomes the effective `x-user-id` used for model access, budget enforcement, and Request Trace. The tester must exist in the enterprise directory and belong to the selected department; arbitrary or cross-department identities are rejected by the API.
 
+## Organization and subscription attribution
+
+Apply `009_org_units` and `010_application_attribution` along with the upstream migrations
+before deploying the integrated API. Owners can rename the organization, create or retire
+departments, manage console-member roles and status, and assign subscription owners and
+departments. Department assignment also supports bulk updates. Unit IDs remain stable;
+changing a display name does not rewrite historical usage. Console accounts and people attributed to gateway consumption
+are separate directories.
+
+`SEED_DEMO_DIRECTORY` defaults to `true` for compatibility. Set it to `false` for a customer
+installation to omit seeded demonstration people from governance and budget lists. This does
+not remove actual accounts, observed consumers, subscription owners, or traffic-generator
+fixtures.
+
+Subscription attribution contributes Token and USD totals to the current department and
+owner without rewriting the caller identity in `token_usage`. Unknown prices remain marked
+as unpriced. Manual owner/department changes are recorded and protected from subsequent
+discovery updates. Moving an assignment changes read-time reporting for its historical
+subscription usage; it is not an immutable historical cost-allocation snapshot.
+
+Reporting attribution does not supply a trusted per-person identity to APIM. A shared-key
+caller still needs a separately configured identity/admission flow for a person-level hard
+budget; upstream atomic budget execution remains independently installed and default-off.
+
 ## APIM and control plane
 
 ### Versioned model availability

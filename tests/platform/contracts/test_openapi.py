@@ -146,7 +146,29 @@ def test_openapi_root_is_a_small_domain_index() -> None:
         "github-copilot.yaml",
         "model-platform.yaml",
         "observability.yaml",
+        "organization.yaml",
     }
+
+
+def test_delivery_organization_and_attribution_schemas_match_runtime() -> None:
+    documented = _documented_schemas()
+    actual = app.openapi()["components"]["schemas"]
+    names = {
+        name for name in actual
+        if name.startswith(("Org", "ConsoleMember", "GatewayApplicationBulkDepartment"))
+    } | {"GatewayApplicationDepartmentUpdate", "GatewayApplicationOwnerUpdate"}
+    assert len(names) == 14
+    for name in names:
+        assert _schema_contract(documented[name]) == _schema_contract(actual[name]), name
+    for name in ("GatewayApplicationSummary", "GatewayApplicationDetail"):
+        properties = cast(dict[str, object], documented[name]["properties"])
+        for field in (
+            "owner_source", "department_source", "person_group", "person_group_size",
+            "department_name",
+        ):
+            assert _schema_contract(properties[field]) == _schema_contract(
+                actual[name]["properties"][field]
+            ), (name, field)
 
 
 def test_model_availability_contract_matches_runtime_constraints_and_owner_routes() -> None:

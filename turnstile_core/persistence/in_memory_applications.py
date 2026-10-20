@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -13,10 +13,12 @@ from ..domain.application_access import (
     UsageApplicationAttribution,
     application_organization,
 )
+from ..domain.enterprise import governance_directory
 from ..domain.ledger import BudgetReservationFinalization, validate_application_snapshot
 
 
 class InMemoryApplicationRepositoryMixin:
+    org_units: Callable[[], Sequence[dict[str, Any]]]
     gateway_applications: list[dict[str, Any]]
     gateway_application_avatars: dict[UUID, dict[str, Any]]
     gateway_application_subscriptions: list[dict[str, Any]]
@@ -33,6 +35,8 @@ class InMemoryApplicationRepositoryMixin:
     budget_reservation_finalizations: dict[
         tuple[str, str, str, str, str, datetime], BudgetReservationFinalization
     ]
+    gateway_application_attribution: dict[UUID, dict[str, Any]]
+    gateway_application_attribution_audit: list[dict[str, Any]]
     usage_application_attributions: dict[str, UsageApplicationAttribution]
     usage_records: list[Any]
     models: list[dict[str, Any]]
@@ -54,6 +58,78 @@ class InMemoryApplicationRepositoryMixin:
             ]:
                 strongest[key] = item
         return list(strongest.values())
+
+    def _record_attribution_sources(
+        self,
+        application_id: UUID,
+        *,
+        owner_source: str | None,
+        department_source: str | None,
+        actor: str,
+    ) -> None:
+        if owner_source is None and department_source is None:
+            return
+        current = self.gateway_application_attribution.setdefault(
+            application_id,
+            {
+                "application_id": application_id,
+                "owner_source": None,
+                "department_source": None,
+                "updated_by": actor,
+                "updated_at": datetime.now(UTC),
+            },
+        )
+        if owner_source is not None:
+            current["owner_source"] = owner_source
+        if department_source is not None:
+            current["department_source"] = department_source
+        current["updated_by"] = actor
+        current["updated_at"] = datetime.now(UTC)
+
+    def _fill_blank_attribution_sources(
+        self,
+        application: dict[str, Any],
+        *,
+        owner_id: str | None,
+        owner_source: str | None,
+        department_id: str | None,
+        department_source: str | None,
+        actor: str,
+        now: datetime,
+    ) -> None:
+        """Fill what is blank; never write over what a person decided. Mirrors the SQL path."""
+        sources = self.gateway_application_attribution.get(application["id"], {})
+        filled_owner: str | None = None
+        filled_department: str | None = None
+        if (
+            owner_id
+            and owner_source is not None
+            and not (application.get("owner_id") or "").strip()
+            and sources.get("owner_source") != "manual"
+        ):
+            application["owner_id"] = owner_id
+            filled_owner = owner_source
+        if (
+            department_id
+            and department_source is not None
+            and not (application.get("department_id") or "").strip()
+            and sources.get("department_source") != "manual"
+        ):
+            application["department_id"] = department_id
+            filled_department = department_source
+        if filled_owner is None and filled_department is None:
+            return
+        application["updated_by"] = actor
+        application["updated_at"] = now
+        self._record_attribution_sources(
+            application["id"],
+            owner_source=filled_owner,
+            department_source=filled_department,
+            actor=actor,
+        )
+
+    def list_gateway_application_attribution(self) -> Sequence[dict[str, Any]]:
+        return [deepcopy(row) for row in self.gateway_application_attribution.values()]
 
     def sync_gateway_applications(
         self,
@@ -96,8 +172,8 @@ class InMemoryApplicationRepositoryMixin:
                     "slug": value["slug"],
                     "display_name": value["display_name"],
                     "description": None,
-                    "owner_id": None,
-                    "department_id": None,
+                    "owner_id": value.get("owner_id"),
+                    "department_id": value.get("department_id"),
                     "application_type": application_type,
                     "status": status,
                     "system_managed": value["system_managed"],
@@ -107,6 +183,12 @@ class InMemoryApplicationRepositoryMixin:
                     "updated_at": now,
                 }
                 self.gateway_applications.append(application)
+                self._record_attribution_sources(
+                    application_id,
+                    owner_source=value.get("owner_source"),
+                    department_source=value.get("department_source"),
+                    actor=actor,
+                )
                 self.gateway_application_budgets[(period_start, application_id)] = {
                     "period_start": period_start,
                     "application_id": application_id,
@@ -138,6 +220,15 @@ class InMemoryApplicationRepositoryMixin:
                         updated_at=now,
                     )
                 operation = "updated" if application_changed else "subscription_synced"
+                self._fill_blank_attribution_sources(
+                    application,
+                    owner_id=value.get("owner_id"),
+                    owner_source=value.get("owner_source"),
+                    department_id=value.get("department_id"),
+                    department_source=value.get("department_source"),
+                    actor=actor,
+                    now=now,
+                )
             subscription = next(
                 (
                     item
@@ -377,6 +468,9 @@ class InMemoryApplicationRepositoryMixin:
             )
         application_organization(
             {"organization_id": organization_id} if organization_id else {}, department_id,
+            catalog=governance_directory(
+                (), include_seeded_people=False, units=self.org_units(),
+            ),
         )
         if (previous != organization_id or previous_department != department_id
             or previous_owner != owner_id):
@@ -387,6 +481,14 @@ class InMemoryApplicationRepositoryMixin:
             now = datetime.now(UTC)
             application.update(tags=tags, department_id=department_id, owner_id=owner_id,
                                updated_by=actor, updated_at=now)
+            for field, before, after in (
+                ("department", previous_department, department_id),
+                ("owner", previous_owner, owner_id),
+            ):
+                if before != after:
+                    self._mark_attribution_manual(
+                        application_id, field, previous=before, new=after, actor=actor,
+                    )
             self.gateway_application_audit.append({
                 "id": uuid4(), "application_id": application_id, "operation": "updated",
                 "before_state": {"organization_id": previous,
@@ -558,6 +660,109 @@ class InMemoryApplicationRepositoryMixin:
             }
         )
         return after_state
+
+    def update_gateway_application_department(
+        self,
+        application_id: UUID,
+        department_id: str | None,
+        actor: str,
+    ) -> dict[str, Any] | None:
+        application = self.get_gateway_application(application_id)
+        if application is None:
+            return None
+        if application.get("department_id") == department_id:
+            return application
+        before_state = {"department_id": application.get("department_id")}
+        now = datetime.now(UTC)
+        application.update(
+            department_id=department_id,
+            updated_by=actor,
+            updated_at=now,
+        )
+        self.gateway_application_audit.append(
+            {
+                "id": uuid4(),
+                "application_id": application_id,
+                "operation": "updated",
+                "before_state": before_state,
+                "after_state": {"department_id": department_id},
+                "actor": actor,
+                "created_at": now,
+            }
+        )
+        self._mark_attribution_manual(
+            application_id, "department",
+            previous=before_state["department_id"], new=department_id, actor=actor,
+        )
+        return application
+
+    def update_gateway_application_owner(
+        self,
+        application_id: UUID,
+        owner_id: str | None,
+        actor: str,
+    ) -> dict[str, Any] | None:
+        application = self.get_gateway_application(application_id)
+        if application is None:
+            return None
+        if (application.get("owner_id") or None) == (owner_id or None):
+            return application
+        before = application.get("owner_id")
+        now = datetime.now(UTC)
+        application.update(owner_id=owner_id, updated_by=actor, updated_at=now)
+        self.gateway_application_audit.append(
+            {
+                "id": uuid4(),
+                "application_id": application_id,
+                "operation": "updated",
+                "before_state": {"owner_id": before},
+                "after_state": {"owner_id": owner_id},
+                "actor": actor,
+                "created_at": now,
+            }
+        )
+        self._mark_attribution_manual(
+            application_id, "owner", previous=before, new=owner_id, actor=actor
+        )
+        return application
+
+    def _mark_attribution_manual(
+        self,
+        application_id: UUID,
+        field: str,
+        *,
+        previous: str | None,
+        new: str | None,
+        actor: str,
+    ) -> None:
+        now = datetime.now(UTC)
+        current = self.gateway_application_attribution.setdefault(
+            application_id,
+            {
+                "application_id": application_id,
+                "owner_source": None,
+                "department_source": None,
+                "updated_by": actor,
+                "updated_at": now,
+            },
+        )
+        previous_source = current.get(f"{field}_source")
+        current[f"{field}_source"] = "manual"
+        current["updated_by"] = actor
+        current["updated_at"] = now
+        self.gateway_application_attribution_audit.append(
+            {
+                "id": uuid4(),
+                "application_id": application_id,
+                "field": field,
+                "previous_value": previous,
+                "new_value": new,
+                "previous_source": previous_source,
+                "new_source": "manual",
+                "changed_by": actor,
+                "changed_at": now,
+            }
+        )
 
     def list_gateway_application_subscriptions(
         self, application_ids: Sequence[UUID]
@@ -984,6 +1189,8 @@ class InMemoryApplicationRepositoryMixin:
                 "application_name": application["display_name"],
                 "application_type": application["application_type"],
                 "application_status": application["status"],
+                "department_id": application.get("department_id"),
+                "owner_id": application.get("owner_id"),
                 "application_subscription_id": subscription["id"],
                 "apim_subscription_id": subscription["apim_subscription_id"],
                 "subscription_state": subscription["state"],

@@ -276,7 +276,10 @@ def token_budget_service(repository: Repository) -> TokenBudgetService:
             )
 
     if not settings.ledger_sync_enabled or not settings.ledger_table_endpoint:
-        return TokenBudgetService(repository, require_atomic_budget=require_atomic_budget)
+        return TokenBudgetService(
+            repository, require_atomic_budget=require_atomic_budget,
+            seed_demo_directory=settings.seed_demo_directory,
+        )
 
     endpoint = settings.ledger_table_endpoint
 
@@ -285,7 +288,10 @@ def token_budget_service(repository: Repository) -> TokenBudgetService:
             service = LedgerSyncService(repository, store)
             service.project_model_access(service.model_access(user_ids))
 
-    return TokenBudgetService(repository, project, require_atomic_budget=require_atomic_budget)
+    return TokenBudgetService(
+        repository, project, require_atomic_budget=require_atomic_budget,
+        seed_demo_directory=settings.seed_demo_directory,
+    )
 
 
 TokenBudgetServiceDependency = Annotated[
