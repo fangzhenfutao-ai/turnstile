@@ -1,7 +1,7 @@
 cryptography==49.0.0
 fastapi==0.139.2
 httpx==0.28.1
-pillow==12.3.0
+pillow==13.0.0
 psycopg[binary]==3.3.4
 pyjwt[crypto]==2.12.1
 psycopg-pool==3.3.1
